@@ -51,10 +51,12 @@ type DialParams struct {
 	Token     string `json:"token"`
 	Region    string `json:"region"`
 	Timeout   string `json:"timeout"`
-	Sip       string `json:"sip,omitempty"`
-	SipDomain string `json:"sip_domain,omitempty"`
-	AppID     string `json:"appid,omitempty"`
-	Video     bool   `json:"video,omitempty"`
+	Sip           string `json:"sip,omitempty"`
+	SipDomain     string `json:"sip_domain,omitempty"`
+	AppID         string `json:"appid,omitempty"`
+	Video         bool   `json:"video,omitempty"`
+	SDKOptions    string `json:"sdk_options,omitempty"`
+	AudioScenario string `json:"audio_scenario,omitempty"`
 }
 
 // DialResult contains the response from a Dial request.
@@ -318,6 +320,12 @@ func (c *Client) Dial(ctx context.Context, params DialParams) (*DialResult, erro
 	}
 	if params.Video {
 		msg["video"] = true
+	}
+	if params.SDKOptions != "" {
+		msg["sdk_options"] = params.SDKOptions
+	}
+	if params.AudioScenario != "" {
+		msg["audio_scenario"] = params.AudioScenario
 	}
 	c.setAppID(msg, params.AppID)
 
