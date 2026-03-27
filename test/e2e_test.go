@@ -230,8 +230,7 @@ func (h *e2eHandler) drainChannels() {
 
 // --- Helper: fetch websocket-status endpoint ---
 func fetchWSStatus(cmURL string) (map[string]interface{}, error) {
-	localURL := "http://127.0.0.1:7360/v1/api/websocket-status"
-	resp, err := http.Get(localURL)
+	resp, err := http.Get(cmURL + "/v1/api/websocket-status")
 	if err != nil {
 		return nil, err
 	}
