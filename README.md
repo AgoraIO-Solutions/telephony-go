@@ -348,7 +348,9 @@ err := client.Transfer(ctx, callID, "+1800***4567", "B")
 
 #### Phone Number Subscription
 
-Control which inbound calls your client receives. Without subscriptions, the client is catch-all (receives all events for its appid).
+Control which inbound calls your client receives. **Subscription is optional.** If you don't call `SetSubscribeNumbers` or `Subscribe`, the client receives `call_incoming` for ALL inbound calls allowed for its appid (catch-all mode). This is the recommended default for most use cases.
+
+Use subscriptions only when you want to narrow the client to specific DIDs — for example, if you have multiple clients and want each to handle a different set of numbers. Server-side DID restrictions (`dids_{appid}` in CM config) are always enforced regardless of client subscriptions.
 
 ##### `SetSubscribeNumbers(numbers []string)`
 
@@ -445,7 +447,7 @@ Events arrive via WebSocket from the gateway's webhook. The CM routes webhook PO
 | Event | Handler | WS Event Name | When it fires |
 |-------|---------|---------------|---------------|
 | Connected | `OnConnected(sessionID)` | — | After successful registration |
-| Incoming | `OnCallIncoming(call) bool` | `call_incoming` | Inbound call on a subscribed DID. Return `true` to claim, `false` to ignore (call removed from state). |
+| Incoming | `OnCallIncoming(call) bool` | `call_incoming` | Inbound call on an allowed DID (all DIDs if no subscription set). Return `true` to claim, `false` to ignore (call removed from state). |
 | Ringing | `OnCallRinging(call)` | `call_ringing` | Outbound call is ringing at destination |
 | Answered | `OnCallAnswered(call)` | `call_answered` | Call answered by remote party |
 | Bridge Start | `OnBridgeStart(call)` | `agora_bridge_start` | Agora channel bridge established |
@@ -544,26 +546,38 @@ The SDK uses `request_id`-based response matching, so multiple concurrent `Dial(
 
 ### How It Works
 
-1. Client subscribes to one or more phone numbers (DIDs)
-2. When a call arrives on that DID, the gateway asks the CM to look up credentials
-3. CM sees the WS subscription → holds the HTTP lookup → broadcasts `call_incoming` to the client
+1. Client connects and registers (with or without `subscribe_numbers`)
+2. When a call arrives on a DID, the gateway asks the CM to look up credentials
+3. CM checks if a connected WS client is eligible for this DID → holds the HTTP lookup → broadcasts `call_incoming`
 4. Client calls `Accept()` with Agora credentials → CM responds to the gateway with the bundle
 5. Gateway bridges the call to the Agora channel
 6. Lifecycle events (answered, bridge, dtmf, hangup) flow back via webhook → WS
 
-### Subscribe at Connect
+**Without subscriptions (default):** The client receives `call_incoming` for all DIDs allowed by the server-side `dids_{appid}` config. If multiple clients are connected, all eligible clients receive the event — first to `Accept()` wins.
+
+**With subscriptions:** The client only receives `call_incoming` for the specified DIDs (must also be in the server-side allowlist if configured).
+
+### Catch-All (No Subscriptions)
+
+```go
+client := telephony.NewClient(wsURL, auth, "client-1", appID)
+client.SetHandler(&MyHandler{})
+client.Connect(ctx) // receives call_incoming for all allowed DIDs
+```
+
+### Subscribe to Specific DIDs (Optional)
 
 ```go
 client := telephony.NewClient(wsURL, auth, "client-1", appID)
 client.SetSubscribeNumbers([]string{"+1800***1234", "+1800***6543"})
-client.SetHandler(&MyHandler{claimCalls: true})
-client.Connect(ctx)
+client.SetHandler(&MyHandler{})
+client.Connect(ctx) // only receives call_incoming for these DIDs
 ```
 
 ### Subscribe on Live Connection
 
 ```go
-// Add new numbers (replaces the entire subscription list)
+// Update subscription (replaces the entire subscription list)
 err := client.Subscribe(ctx, []string{"+1800***1234", "+1800***2222"})
 ```
 
@@ -661,12 +675,12 @@ Client                    CM                                  Gateway
 ```
 Client                    CM                                  Gateway
   │                              │                            │
-  │── Subscribe(DID) ──────────>│                            │
+  │── Connect() ──────────────>│  (optional: subscribe_numbers)
   │                              │                            │
   │                              │<── POST /service (lookup)─│  Inbound call on DID
   │                              │   {did, callerid, callid} │
   │                              │                            │
-  │                              │── hold HTTP response ──── │  (WS subscription match)
+  │                              │── hold HTTP response ──── │  (client eligible for DID)
   │<── OnCallIncoming ──────────│   broadcast call_incoming  │
   │   {callid, from, to}       │                            │
   │                              │                            │
